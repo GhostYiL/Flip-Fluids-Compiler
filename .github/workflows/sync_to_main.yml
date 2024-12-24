@@ -1,0 +1,80 @@
+name: Check for New Version in Commit Messages
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Runs once a day at midnight to reduce API calls
+
+jobs:
+  check_version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v2
+
+      - name: Fetch Latest Commits
+        run: |
+          git fetch --prune --unshallow  # Fetch all history
+          LATEST_COMMIT_MESSAGE=$(git log -1 --pretty=%B)
+          echo "Latest commit message: $LATEST_COMMIT_MESSAGE"
+          echo "commit_message=${LATEST_COMMIT_MESSAGE}" >> $GITHUB_ENV
+
+      - name: Read Last Triggered Version
+        id: read_version
+        run: |
+          if [[ -f latest_version.txt ]]; then
+            LAST_VERSION=$(cat latest_version.txt)
+            echo "Last triggered version: ${LAST_VERSION}"
+            echo "last_version=${LAST_VERSION}" >> $GITHUB_ENV
+          else
+            echo "No previous version found, initializing with the default value."
+            echo "last_version=0.0.0" >> $GITHUB_ENV
+            echo "0.0.0" > latest_version.txt  # Create the file if it doesn't exist
+          fi
+
+      - name: Extract Current Version from Commit Message
+        id: extract_version
+        run: |
+          VERSION_PATTERN="Version ([0-9]+)\.([0-9]+)\.([0-9]+)"
+          if [[ "${{ env.commit_message }}" =~ $VERSION_PATTERN ]]; then
+            CURRENT_VERSION="${BASH_REMATCH[0]}"
+            echo "Detected new version: ${CURRENT_VERSION}"
+            echo "current_version=${CURRENT_VERSION}" >> $GITHUB_ENV
+          else
+            echo "No version information found in the latest commit message."
+            echo "current_version=none" >> $GITHUB_ENV
+          fi
+
+      - name: Check if the version has changed
+        id: check_if_changed
+        run: |
+          if [[ "${{ env.current_version }}" != "none" && "${{ env.current_version }}" != "${{ env.last_version }}" ]]; then
+            echo "New version detected: ${CURRENT_VERSION}. Triggering the build."
+            echo "trigger_build=true" >> $GITHUB_ENV
+          else
+            echo "No new version found or no version information available."
+            echo "trigger_build=false" >> $GITHUB_ENV
+          fi
+
+      - name: Trigger Build Workflow
+        if: env.trigger_build == 'true'
+        uses: repository-sync/github-action@v2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          repository: GhostYiL/Flip-Fluids-Compiler
+          ref: main
+          path: .github/workflows/build_flip_fluids.yml
+          action: trigger
+
+      - name: Update Latest Version File
+        if: env.trigger_build == 'true'
+        run: |
+          echo "${{ env.current_version }}" > latest_version.txt
+          
+      - name: Commit Latest Version File
+        if: env.trigger_build == 'true'
+        run: |
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
+          git add latest_version.txt
+          git commit -m "Update latest version to ${{ env.current_version }}"
+          git push
