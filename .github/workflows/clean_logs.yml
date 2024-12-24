@@ -1,0 +1,16 @@
+name: Clean Workflow Logs
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+
+jobs:
+  clean-logs:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - uses: igorjs/gh-actions-clean-workflow@v6
+        with:
+          runs_older_than: "2"
+          runs_to_keep: "1"
