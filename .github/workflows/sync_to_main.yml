@@ -11,13 +11,13 @@ jobs:
       - name: Checkout this repository
         uses: actions/checkout@v2
 
-      - name: Fetch Latest Commits
+      - name: Fetch Latest Commits for cmake Directory
         run: |
           git fetch --prune --unshallow  # Fetch all history
-          LATEST_COMMIT_MESSAGE=$(git log -1 --pretty=%B)
-          echo "Latest commit message: $LATEST_COMMIT_MESSAGE"
+          LATEST_COMMIT_MESSAGE=$(git log -1 --pretty=%B -- cmake)
+          echo "Latest commit message in cmake: $LATEST_COMMIT_MESSAGE"
           echo "commit_message=${LATEST_COMMIT_MESSAGE}" >> $GITHUB_ENV
-
+      
       - name: Read Last Triggered Version
         id: read_version
         run: |
@@ -30,7 +30,7 @@ jobs:
             echo "last_version=0.0.0" >> $GITHUB_ENV
             echo "0.0.0" > latest_version.txt  # Create the file if it doesn't exist
           fi
-
+      
       - name: Extract Current Version from Commit Message
         id: extract_version
         run: |
@@ -43,7 +43,7 @@ jobs:
             echo "No version information found in the latest commit message."
             echo "current_version=none" >> $GITHUB_ENV
           fi
-
+      
       - name: Check if the version has changed
         id: check_if_changed
         run: |
@@ -54,16 +54,15 @@ jobs:
             echo "No new version found or no version information available."
             echo "trigger_build=false" >> $GITHUB_ENV
           fi
-
+      
       - name: Trigger Build Workflow
         if: env.trigger_build == 'true'
-        uses: repository-sync/github-action@v2
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          repository: GhostYiL/Flip-Fluids-Compiler
-          ref: main
-          path: .github/workflows/build_flip_fluids.yml
-          action: trigger
+        run: |
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/GhostYiL/Flip-Fluids-Compiler/actions/workflows/build_flip_fluids.yml/dispatches \
+            -d '{"ref":"main"}'
 
       - name: Update Latest Version File
         if: env.trigger_build == 'true'
