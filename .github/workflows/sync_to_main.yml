@@ -35,6 +35,7 @@ jobs:
         id: extract_version
         run: |
           VERSION_PATTERN="Version ([0-9]+)\.([0-9]+)\.([0-9]+)"
+          echo "Testing commit message: ${commit_message}"
           if [[ "${{ env.commit_message }}" =~ $VERSION_PATTERN ]]; then
             CURRENT_VERSION="${BASH_REMATCH[0]}"
             echo "Detected new version: ${CURRENT_VERSION}"
