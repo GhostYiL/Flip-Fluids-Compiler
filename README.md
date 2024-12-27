@@ -13,7 +13,7 @@ The repo will check whenever the main branch of flip fluids gets a Version X.Y.Z
 # To Do's:
 - [x] Make CMake Action for the Flip Fluids
 - [x] Fix release versioning with the main branch
-- [ ] Make release checker of the main branch
+- [x] Make release checker of the main branch
 
 # Credits
 Flip Fluids repository: [LINK](https://github.com/rlguy/Blender-FLIP-Fluids).
