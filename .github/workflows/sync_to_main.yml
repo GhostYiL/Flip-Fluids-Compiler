@@ -2,7 +2,7 @@ name: trigger
 
 on:
   schedule:
-    - cron:  '30 5 * * *'
+    - cron: '30 5 * * *'
   workflow_dispatch:
 
 jobs:
@@ -11,7 +11,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-      - name: Make script executable
+      
+      - name: Prepare
+        run: sudo apt-get install dos2unix
+      
+      - name: Dos
+        run: dos2unix isUpdated.sh
+
+      - name: +Exec
         run: chmod +x ./isUpdated.sh
-      - name: Run isUpdated.sh
+        
+      - name: Run sh
         run: ./isUpdated.sh
