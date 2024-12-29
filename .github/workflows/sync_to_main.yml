@@ -3,7 +3,6 @@ name: trigger
 on:
   schedule:
     - cron:  '30 5 * * *'
-
   workflow_dispatch:
 
 jobs:
@@ -12,4 +11,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-      - run: ./isUpdated.sh
+      - name: Make script executable
+        run: chmod +x ./isUpdated.sh
+      - name: Run isUpdated.sh
+        run: ./isUpdated.sh
