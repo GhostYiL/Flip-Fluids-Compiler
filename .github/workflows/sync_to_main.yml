@@ -13,13 +13,21 @@ jobs:
         uses: actions/checkout@v2
       
       - name: Prepare
-        run: sudo apt-get install dos2unix
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dos2unix
       
       - name: Dos
         run: dos2unix isUpdated.sh
 
-      - name: +Exec
+      - name: List Files
+        run: ls -la  # List files to ensure isUpdated.sh is present
+
+      - name: Print contents of isUpdated.sh
+        run: cat ./isUpdated.sh  # Check the contents of the script
+      
+      - name: Make Script Executable
         run: chmod +x ./isUpdated.sh
         
-      - name: Run sh
-        run: ./isUpdated.sh
+      - name: Run isUpdated.sh
+        run: bash ./isUpdated.sh  # Explicitly call bash
