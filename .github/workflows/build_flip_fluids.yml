@@ -161,4 +161,4 @@ jobs:
         name: Release_${{ env.FLIP_FLUIDS_VERSION }}
         tag_name: v${{ env.FLIP_FLUIDS_VERSION }}
         files: ./Blender-FLIP-Fluids/build/flip_fluids_addon.zip
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      if: github.event.workflow_run.conclusion == 'success' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
