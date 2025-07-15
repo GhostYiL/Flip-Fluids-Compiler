@@ -1,17 +1,11 @@
 name: Build FLIP Fluids for Windows
 
-# on:
-#   push:
-#     branches: [ main ]
-#   workflow_dispatch:
-#   repository_dispatch:
 on:
   workflow_run:
     workflows: ["trigger"]
     types: [completed]
-
   workflow_dispatch:
-  
+
 permissions:
   contents: write
 
@@ -29,136 +23,85 @@ jobs:
       with:
         msystem: MINGW64
         update: true
-        install: mingw-w64-x86_64-toolchain
-
-    - name: Create MSYS2 cache directory
-      run: |
-        if (-Not (Test-Path 'msys64')) {
-          New-Item -ItemType Directory -Path 'msys64'
-        }
-      shell: pwsh
-
-    - name: Cache MSYS2
-      uses: actions/cache@v3
-      with:
-        path: msys64
-        key: msys2 | ${{ runner.os }} | ${{ hashFiles('**/build.py') }}
-        restore-keys: |
-          msys2 | ${{ runner.os }}
+        install: >-
+          mingw-w64-x86_64-toolchain
+          mingw-w64-x86_64-cmake
+          mingw-w64-x86_64-ninja
+          mingw-w64-x86_64-zlib
+          mingw-w64-x86_64-lz4
 
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
 
-    - name: Create Python cache directories
-      run: |
-        if (-Not (Test-Path "$env:USERPROFILE\.cache\pip")) {
-          New-Item -ItemType Directory -Path "$env:USERPROFILE\.cache\pip"
-        }
-        if (-Not (Test-Path "$env:USERPROFILE\.local")) {
-          New-Item -ItemType Directory -Path "$env:USERPROFILE\.local"
-        }
-      shell: pwsh
-
-    - name: Cache Python packages
-      uses: actions/cache@v3
-      with:
-        path: |
-          ${{ env.HOME }}\.cache\pip
-          ${{ env.HOME }}\.local
-        key: python-packages | ${{ hashFiles('requirements.txt') }}
-
-      if: exists('${{ env.HOME }}\\.cache\\pip') || exists('${{ env.HOME }}\\.local')
-
     - name: Install Python packages
       run: pip install -r requirements.txt
-      
-    - name: Cache Python packages after install
-      uses: actions/cache@v3
-      with:
-        path: |
-          ${{ env.HOME }}\.cache\pip
-          ${{ env.HOME }}\.local
-        key: python-packages | ${{ hashFiles('requirements.txt') }} | ${{ runner.os }}
-
-      if: steps.cache-python.outputs.cache-hit != 'true'
-      
-    - name: Install CMake
-      uses: jwlawson/actions-setup-cmake@v1.14
-
-    - name: Add MinGW to PATH
-      run: echo "${{ github.workspace }}/msys64/mingw64/bin" >> $GITHUB_PATH
-      shell: bash
 
     - name: Clone FLIP Fluids repository
+      shell: msys2 {0}
       run: git clone https://github.com/rlguy/Blender-FLIP-Fluids.git
 
-    - name: Build FLIP Fluids
+    - name: Build FLIP Fluids with verbose logging
       id: build_flip_fluids
+      shell: msys2 {0}
       run: |
         cd Blender-FLIP-Fluids
-    
-        export LC_ALL=C.UTF-8
-        
-        output=$(python build.py)
-        echo "$output"
-    
-        version=$(echo "$output" | grep -o 'FLIP Fluids version [0-9]\+\.[0-9]\+\.[0-9]\+' | awk '{print $4}' | sort -u | head -n 1)
-    
-        if [[ -z "$version" ]]; then
-          echo "Error: Version not found in output."
-          exit 1
-        else
+        export VERBOSE=1
+        python build.py 2>&1 | tee build.log
+        echo "exit_code=$?" >> $GITHUB_OUTPUT
+      continue-on-error: true
 
-          trimmed_version=$(echo "$version" | xargs)
-          
-          echo "Extracted Version: ${trimmed_version}"
+    - name: Upload build logs on failure
+      if: ${{ steps.build_flip_fluids.outputs.exit_code != 0 }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-failure-logs
+        path: |
+          Blender-FLIP-Fluids/build.log
+          Blender-FLIP-Fluids/CMakeCache.txt
+          Blender-FLIP-Fluids/CMakeFiles/CMakeOutput.log
+          Blender-FLIP-Fluids/CMakeFiles/CMakeError.log
 
-          echo "FLIP_FLUIDS_VERSION=${trimmed_version}" >> $GITHUB_ENV
-        fi
+    - name: Fail if build unsuccessful
+      if: ${{ steps.build_flip_fluids.outputs.exit_code != 0 }}
+      run: exit 1
+
+    - name: Extract version info
+      if: ${{ steps.build_flip_fluids.outputs.exit_code == 0 }}
       shell: bash
-
-    - name: List build directory
-      run: dir ./Blender-FLIP-Fluids/build/
-
-    - name: Create zip file for the add-on
       run: |
-        $zipFile = './Blender-FLIP-Fluids/build/flip_fluids_addon.zip'
+        cd Blender-FLIP-Fluids
+        version=$(grep -oP 'FLIP Fluids version \K[\d\.]+' build.log | head -1)
+        echo "FLIP_FLUIDS_VERSION=$version" >> $GITHUB_ENV
+        echo "Version: $version"
+
+    - name: Package addon
+      if: ${{ steps.build_flip_fluids.outputs.exit_code == 0 }}
+      shell: pwsh
+      run: |
         $source = './Blender-FLIP-Fluids/build/bl_flip_fluids/flip_fluids_addon'
+        $dest = './Blender-FLIP-Fluids/build/flip_fluids_addon.zip'
         if (Test-Path $source) {
-          Compress-Archive -Path $source -DestinationPath $zipFile -Force
-          Write-Host "Created zip file: $zipFile"
+          Compress-Archive -Path $source -DestinationPath $dest -Force
         } else {
-          Write-Host "Source directory not found: $source"
+          Write-Error "Addon directory missing: $source"
           exit 1
         }
-      shell: pwsh
 
-    - name: Check if zip file exists
-      run: |
-        if (Test-Path './Blender-FLIP-Fluids/build/flip_fluids_addon.zip') {
-          Write-Host "File exists"
-        } else {
-          Write-Host "Zip file does not exist"
-          exit 1
-        }
-      shell: pwsh
-
-    - name: Upload compiled addon
+    - name: Upload artifact
+      if: ${{ steps.build_flip_fluids.outputs.exit_code == 0 }}
       uses: actions/upload-artifact@v4
       with:
         name: flip-fluids-addon
-        path: Blender-FLIP-Fluids/build/
-      if: success()
-      
-    - name: Release
+        path: Blender-FLIP-Fluids/build/flip_fluids_addon.zip
+
+    - name: Create release
+      if: ${{ success() && (github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch') }}
       uses: softprops/action-gh-release@v2
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        make_latest: true
-        name: Release_${{ env.FLIP_FLUIDS_VERSION }}
         tag_name: v${{ env.FLIP_FLUIDS_VERSION }}
-        files: ./Blender-FLIP-Fluids/build/flip_fluids_addon.zip
-      if: github.event.workflow_run.conclusion == 'success' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+        name: "FLIP Fluids ${{ env.FLIP_FLUIDS_VERSION }}"
+        files: Blender-FLIP-Fluids/build/flip_fluids_addon.zip
